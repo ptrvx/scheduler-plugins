@@ -252,7 +252,6 @@ func (p *RafPlugin) Score(ctx context.Context, state *framework.CycleState, pod 
 		return 0, framework.NewStatus(framework.Unschedulable, "metrics not found or failed to retrieve")
 	}
 
-	// Simplified scoring logic
 	valuesRaw, ok := metrics[nodeName]
 	if !ok {
 		klog.Errorf("metrics for node %v not found", nodeName)
@@ -286,19 +285,38 @@ func (p *RafPlugin) Score(ctx context.Context, state *framework.CycleState, pod 
 }
 
 func (p *RafPlugin) NormalizeScore(ctx context.Context, state *framework.CycleState, pod *corev1.Pod, scores framework.NodeScoreList) *framework.Status {
-	var maxScore int64 = 0
+	var maxScore int64 = scores[0].Score
+	var minScore int64 = scores[0].Score
+
+	// Find the max and min scores
 	for _, nodeScore := range scores {
 		if nodeScore.Score > maxScore {
 			maxScore = nodeScore.Score
 		}
+		if nodeScore.Score < minScore {
+			minScore = nodeScore.Score
+		}
 	}
 
-	if maxScore == 0 {
+	// If all scores are zero, there's no need to normalize
+	if maxScore == 0 && minScore == 0 {
 		return framework.NewStatus(framework.Success, "All nodes scored 0")
 	}
 
+	// If minScore is negative, shift all scores to be non-negative by adding abs(minScore) to each
+	scoreRange := maxScore - minScore
+	if scoreRange == 0 {
+		// If the range is zero (all scores are the same), assign 100 to all nodes
+		for i := range scores {
+			scores[i].Score = framework.MaxNodeScore
+		}
+		return framework.NewStatus(framework.Success, "All nodes have the same score")
+	}
+
+	// Normalize scores to the range [0, 100]
 	for i := range scores {
-		scores[i].Score = scores[i].Score * 100 / maxScore
+		// Shift the score by subtracting minScore and then normalize
+		scores[i].Score = ((scores[i].Score - minScore) * framework.MaxNodeScore) / scoreRange
 	}
 
 	return framework.NewStatus(framework.Success, "Scores normalized")
