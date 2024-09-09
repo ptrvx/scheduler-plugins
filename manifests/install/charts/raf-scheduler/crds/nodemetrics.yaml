@@ -25,7 +25,9 @@ spec:
                     properties:
                       targetNode:
                         type: string
-                      bandwidth:
+                      upload:
+                        type: string
+                      download:
                         type: string
                       latency:
                         type: string
